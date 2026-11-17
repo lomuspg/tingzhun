@@ -1,0 +1,10 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {parseJianpu,buildTimeline,summarize} from '../dist/lib/core.js';import {decodeSession} from '../dist/lib/storage.js';import {accompanimentEvents} from '../dist/lib/audio.js';
+test('节奏统计使用可靠起音事件，不依赖稳态音准帧',()=>{
+ const r=summarize([{voiced:true,confident:false,timing:.12,timingValid:true},{voiced:true,confident:true,cents:0,t:1,measure:0}],35);assert.equal(r.timing,.12);
+});
+test('导出的曲谱备份还原后旋律不会重复进入伴奏',()=>{const s=parseJianpu('1 2 3 4 |');s.melodyId=s.parts[0].id;const cloned=JSON.parse(JSON.stringify(s));assert.equal(buildTimeline(cloned).accompaniment.length,0);});
+test('选段前的和弦延续到选段中，移调同时作用到伴奏',()=>{const s=parseJianpu('[C] 1 2 3 4 | 5 6 7 1\' |');const t=buildTimeline(s,{start:1,end:1,bpm:120,transpose:2});const a=accompanimentEvents(s,t);assert.ok(a.length>0);assert.equal(a[0].midi,38);assert.equal(a[0].time,0);});
+test('恶意备份中的字符串选段和无效帧不能进入报告',()=>{const score=parseJianpu('1 2 3 4 |');assert.throws(()=>decodeSession({format:'tingzhun-session',version:1,session:{score,options:{bpm:80,start:'<img src=x onerror=alert(1)>',end:0},frames:[{t:0,measure:'<img>'}]}}));});
+test('备份往返重建旋律声部引用，校验录音和帧边界',()=>{const score=parseJianpu('1 2 3 4 |');score.melodyId='melody';const data={format:'tingzhun-session',version:1,session:{created:new Date().toISOString(),duration:2,score:JSON.parse(JSON.stringify(score)),options:{mode:'piano',bpm:120,start:0,end:0,transpose:0,tolerance:35},frames:[{t:.1,hz:261.6,voiced:true,confident:true,cents:0,target:60,index:0,measure:0,lap:0}],audio:'data:audio/wav;base64,UklGRg=='}};const s=decodeSession(data);assert.equal(s.score.notes,s.score.parts[0].notes);assert.equal(s.audio.size,4);});
+test('浏览器带编码参数的录音备份可重新导入',()=>{const score=parseJianpu('1 2 3 4 |');const s=decodeSession({format:'tingzhun-session',version:1,session:{created:new Date().toISOString(),duration:1,score,options:{mode:'piano',bpm:120,start:0,end:0,transpose:0,tolerance:35},frames:[],audio:'data:audio/webm;codecs=opus;base64,UklGRg=='}});assert.equal(s.audio.type,'audio/webm;codecs=opus');});

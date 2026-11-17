@@ -1,0 +1,21 @@
+export async function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('tingzhun-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('sessions',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(Error('无法打开本机记录库，请检查浏览器存储权限。'));});}
+export async function records(operation,record){const db=await database();try{return await new Promise((resolve,reject)=>{const tx=db.transaction('sessions',operation==='list'?'readonly':'readwrite'),store=tx.objectStore('sessions');const request=operation==='list'?store.getAll():operation==='delete'?store.delete(record):store.put(record);let result;request.onsuccess=()=>result=request.result;tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(Error('本机保存失败，可能是容量不足。请先导出备份。'));tx.onabort=tx.onerror;});}finally{db.close();}}
+export async function encodeSession(session){const audio=session.audio?await blobData(session.audio):null;return{format:'tingzhun-session',version:1,session:{...session,audio}};}
+export function blobData(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('录音导出失败。'));r.readAsDataURL(blob);});}
+export function decodeSession(data){
+ if(data?.format!=='tingzhun-session'||data.version!==1)throw Error('这不是听准的练习备份。');const s=data.session;
+ if(!s||!Array.isArray(s.frames)||s.frames.length>30000||!s.score?.notes?.length||!Array.isArray(s.score.measures)||!s.options||!Number.isFinite(s.options.bpm)||s.options.bpm<30||s.options.bpm>240)throw Error('备份内容不完整或超过容量限制。');
+ const finite=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
+ const o=s.options,score=s.score;
+ if(!['free','beat','piano'].includes(o.mode)||!Number.isInteger(o.start)||!Number.isInteger(o.end)||o.start<0||o.end<o.start||o.end>=score.measures.length||!finite(o.transpose,-12,12)||!finite(o.tolerance,1,100)||!finite(s.duration??0,0,1900))throw Error('备份练习条件无效。');
+ if(typeof s.created!=='string'||!Number.isFinite(Date.parse(s.created)))throw Error('备份日期无效。');
+ const noteValid=n=>n&&finite(n.beat,0,100000)&&finite(n.dur,.001,1000)&&(n.midi===null||finite(n.midi,0,127))&&Number.isInteger(n.measure)&&n.measure>=0&&n.measure<score.measures.length&&Number.isInteger(n.id);
+ if(score.notes.length>6000||!score.measures.length||score.measures.length>6000||!score.notes.every(noteValid)||!Array.isArray(score.parts)||!score.parts.length||score.parts.length>100||!score.parts.every(p=>typeof p.id==='string'&&Array.isArray(p.notes)&&p.notes.length<=6000&&p.notes.every(noteValid)))throw Error('备份曲谱无效。');
+ if(!score.measures.every(m=>finite(m.beat,0,100000)&&finite(m.dur,.001,1000))||!Array.isArray(score.meter)||!finite(score.meter[0],1,32)||![2,4,8,16].includes(score.meter[1]))throw Error('备份小节或拍号无效。');
+ if(!Array.isArray(score.chords)||!score.chords.every(c=>finite(c.beat,0,100000)&&finite(c.root,0,11)&&finite(c.bass,0,11)&&Array.isArray(c.intervals)&&c.intervals.length<=12&&c.intervals.every(i=>finite(i,0,24))))throw Error('备份和弦无效。');
+ if(!s.frames.every(f=>f&&finite(f.t,0,1900)&&(f.hz==null||finite(f.hz,20,4000))&&(f.cents==null||finite(f.cents,-12000,12000))&&(f.target==null||finite(f.target,0,140))&&(f.measure==null||Number.isInteger(f.measure)&&f.measure>=0&&f.measure<score.measures.length)&&(f.lap==null||Number.isInteger(f.lap)&&f.lap>=0&&f.lap<10000)))throw Error('备份采样数据无效。');
+ let audio=null;if(s.audio){const m=typeof s.audio==='string'&&s.audio.match(/^data:(audio\/[a-z0-9.+-]+(?:;[a-z0-9._+-]+=[a-z0-9._+-]+)*);base64,([A-Za-z0-9+/=]*)$/i);if(!m||m[2].length>140000000)throw Error('备份录音格式无效或过大。');const binary=atob(m[2]);audio=new Blob([Uint8Array.from(binary,c=>c.charCodeAt(0))],{type:m[1]});}
+ const part=score.parts.find(p=>p.id===score.melodyId)||score.parts[0];score.melodyId=part.id;score.notes=part.notes;
+ return {...s,score,id:crypto.randomUUID(),audio};
+}
+export function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
