@@ -23,7 +23,7 @@ export class AudioEngine{
  click(time,strong=false){const ctx=this.context,o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=strong?1050:720;g.gain.setValueAtTime(.14,time);g.gain.exponentialRampToValueAtTime(.0001,time+.045);o.connect(g);g.connect(ctx.destination);o.start(time);o.stop(time+.05);this.nodes.add(o);o.onended=()=>{o.disconnect();g.disconnect();this.nodes.delete(o);};}
  async preview(score,options){await this.stop();const token=++this.generation;await this.ready();if(token!==this.generation)return;this.closed=false;this.schedule(score,options,false);}
  async start(score,options,onFrame,onTick,onFinish){
-  await this.stop();const token=++this.generation;await this.ready();this.closed=false;
+  await this.stop();const token=++this.generation;await this.ready();if(token!==this.generation)throw new DOMException('录音请求已取消。','AbortError');this.closed=false;
   try{
    if(!navigator.mediaDevices?.getUserMedia)throw Error('当前浏览器不能使用麦克风，请在安全网页或本机地址中打开。');
    const stream=options.inputStream||await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
@@ -37,7 +37,7 @@ export class AudioEngine{
    this.onFinish=onFinish;this.onFrame=onFrame;this.onTick=onTick;
    this.schedule(score,options,true);
    this.frameBuffer=new Float32Array(4096);this.lastFrame=0;
-  }catch(e){await this.stop();throw e;}
+  }catch(e){if(token===this.generation)await this.stop();throw e;}
  }
  schedule(score,options,recording){
   this.recording=recording;this.timeline=buildTimeline(score,options);this.options=options;this.score=score;

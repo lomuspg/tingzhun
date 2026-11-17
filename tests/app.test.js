@@ -17,7 +17,7 @@ test('应用整条流程：录音中保护导航、保存回放、第二场刷�
  await wait(700);assert.match($('signalStatus').textContent,/收音清晰/);const before=paints;
  await $('stop').onclick();assert.equal(released,1);assert.equal($('history').hidden,false);assert.equal($('historyCount').textContent,'1');assert.equal($('review').hidden,false);assert.ok($('reviewAudio'));
  const {records,encodeSession,decodeSession}=await import('../dist/lib/storage.js');const saved=(await records('list'))[0];assert.equal(saved.audio.size,8);assert.ok(saved.frames.length>3);
- const backup=await encodeSession(saved);assert.equal(decodeSession(backup).audio.size,8);
+ const backup=await encodeSession(saved);assert.doesNotThrow(()=>decodeSession(backup),JSON.stringify({options:backup.session.options,duration:backup.session.duration}));assert.equal(decodeSession(backup).audio.size,8);
  win.document.querySelector('[data-page="studio"]').onclick();await $('start').onclick();await wait(380);assert.ok(paints>before+1,'第二次练习早期刷新曲线');await $('stop').onclick();assert.equal($('historyCount').textContent,'2');assert.equal(released,2);
  timers.forEach(clearTimeout);globalThis.setTimeout=nativeTimeout;await win.happyDOM.close();
 });

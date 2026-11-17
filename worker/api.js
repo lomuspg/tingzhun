@@ -9,7 +9,7 @@ async function account(env,user){
  return await env.DB.prepare('SELECT vault_key, preferences FROM accounts WHERE user_id = ?').bind(user).first();
 }
 async function body(request){const length=Number(request.headers.get('Content-Length')||0);if(length>140000)throw new ApiError('同步摘要超过单条免费容量。',413,'capacity');const text=await request.text();if(new TextEncoder().encode(text).length>140000)throw new ApiError('同步摘要超过单条免费容量。',413,'capacity');try{return JSON.parse(text);}catch{throw new ApiError('请求内容无效。');}}
-export async function handleApi(request,env){
+async function routeApi(request,env){
  try{
   const url=new URL(request.url),path=url.pathname,origin=request.headers.get('Origin');
   if(origin&&origin!==url.origin||request.headers.get('Sec-Fetch-Site')==='cross-site')throw new ApiError('请在主站内操作个人记录。',403,'origin');
@@ -17,6 +17,7 @@ export async function handleApi(request,env){
   const user=request.headers.get('oai-authenticated-user-id'),email=request.headers.get('oai-authenticated-user-email'),authenticated=!!user&&!!email;
   if(path==='/api/me'&&request.method==='GET'&&!authenticated)return json({authenticated:false,enabled:!!env.DB,signIn:'/signin-with-chatgpt?return_to=%2F'});
   if(!authenticated)throw new ApiError('请先登录，再访问个人记录。',401,'auth');
+  if(request.headers.get('X-Tingzhun-Account')&&request.headers.get('X-Tingzhun-Account')!==user)throw new ApiError('账号状态已变化，请刷新或重新登录。',401,'identity-changed');
   if(!env.DB)throw new ApiError('个人同步暂时不可用，记录仍保留在本机。',503,'unavailable');
   const acc=await account(env,user);
   if(path==='/api/me'&&request.method==='GET')return json({authenticated:true,userId:user,vaultKey:acc.vault_key,preferences:cleanPreferences(JSON.parse(acc.preferences)),signOut:'/signout-with-chatgpt?return_to=%2F',limits:{records:100,perUserBytes:2097152}});
@@ -50,3 +51,4 @@ export async function handleApi(request,env){
   return json({error:'找不到此接口。',code:'missing'},404);
  }catch(e){return json({error:e instanceof ApiError?e.message:'个人同步暂时不可用，记录仍保留在本机。',code:e.code||'unavailable'},e.status||503);}
 }
+export async function handleApi(request,env){const response=await routeApi(request,env),user=request.headers.get('oai-authenticated-user-id');if(user&&request.headers.get('oai-authenticated-user-email'))response.headers.set('X-Tingzhun-User',user);return response;}
