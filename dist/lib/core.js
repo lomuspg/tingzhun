@@ -3,10 +3,10 @@ export const hzMidi=h=>69+12*Math.log2(h/440);
 export const noteName=m=>m==null?'—':['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'][((Math.round(m)%12)+12)%12]+(Math.floor(Math.round(m)/12)-1);
 const steps={C:0,D:2,E:4,F:5,G:7,A:9,B:11},scale=[0,2,4,5,7,9,11];
 export function parseJianpu(text){
- const s={title:'我的曲谱',bpm:80,meter:[4,4],key:'C',notes:[],chords:[],measures:[],warnings:[],parts:[]},body=[];
+ const s={title:'我的曲谱',bpm:80,tempoSource:'suggested',meter:[4,4],key:'C',notes:[],chords:[],measures:[],warnings:[],parts:[]},body=[];
  for(const line of text.split(/\r?\n/)){
   const m=line.trim().match(/^(标题|调号|拍号|速度|歌词)\s*[:：]\s*(.*)$/);
-  if(m){const [_,k,v]=m;if(k==='标题')s.title=v.slice(0,100);if(k==='调号')s.key=v;if(k==='速度')s.bpm=Number(v);if(k==='拍号')s.meter=v.split('/').map(Number);if(k==='歌词')s.lyrics=v;}
+  if(m){const [_,k,v]=m;if(k==='标题')s.title=v.slice(0,100);if(k==='调号')s.key=v;if(k==='速度'){s.bpm=Number(v);s.tempoSource='score';}if(k==='拍号')s.meter=v.split('/').map(Number);if(k==='歌词')s.lyrics=v;}
   else if(!line.trim().startsWith('//'))body.push(line);
  }
  if(!(s.bpm>=30&&s.bpm<=240))throw Error('速度请设在每分钟 30—240 拍之间。');
@@ -30,7 +30,7 @@ export function parseJianpu(text){
  close();if(!s.notes.some(n=>n.midi!=null))throw Error('请至少输入一个旋律音符。');
  if(s.notes.length>6000)throw Error('单次最多支持 6000 个音符，请分文件导入。');
  if(s.lyrics){const words=s.lyrics.split(/\s+/);s.notes.filter(n=>n.midi!=null).forEach((n,i)=>n.lyric=words[i]||'');}
- s.parts=[{id:'melody',name:'主旋律',notes:s.notes}];return s;
+ if(s.tempoSource==='suggested')s.warnings.push('曲谱未标速度：80 为建议练习速度，可自行调整。');s.parts=[{id:'melody',name:'主旋律',notes:s.notes}];return s;
 }
 export function parseChord(label){
  const m=label.trim().match(/^([A-G])([#b]?)(maj7|m7|m|min|minor|7|major|dim|sus4|sus2)?(?:\/([A-G])([#b]?))?$/);if(!m)return null;
@@ -45,7 +45,7 @@ export function parseMusicXML(xml,parser=new DOMParser()){
  if(doc.getElementsByTagName('parsererror').length)throw Error('电子谱格式损坏。');
  if(doc.documentElement?.nodeName!=='score-partwise')throw Error('目前支持分声部 MusicXML，请从制谱软件导出此格式。');
  const txt=(e,t,d='')=>e.getElementsByTagName(t)[0]?.textContent||d,children=e=>Array.from(e.childNodes||[]).filter(c=>c.nodeType===1);
- const s={title:txt(doc,'work-title',txt(doc,'movement-title','导入的乐谱')).slice(0,100),bpm:80,meter:[4,4],key:'原谱',notes:[],parts:[],chords:[],measures:[],warnings:[]},names={};
+ const s={title:txt(doc,'work-title',txt(doc,'movement-title','导入的乐谱')).slice(0,100),bpm:80,tempoSource:'suggested',meter:[4,4],key:'原谱',notes:[],parts:[],chords:[],measures:[],warnings:[]},names={};
  for(const p of Array.from(doc.getElementsByTagName('score-part')))names[p.getAttribute('id')]=txt(p,'part-name','声部');
  for(const [pi,part]of children(doc.documentElement).filter(c=>c.nodeName==='part').entries()){
   let base=0,div=1,meter=[4,4];const tracks=new Map(),ties=new Map();
@@ -56,7 +56,7 @@ export function parseMusicXML(xml,parser=new DOMParser()){
      div=Number(txt(e,'divisions',String(div)));if(!(div>0))throw Error('电子谱时值单位无效。');
      const time=e.getElementsByTagName('time')[0];if(time)meter=[txt(time,'beats','4').split('+').reduce((a,b)=>a+Number(b),0),Number(txt(time,'beat-type','4'))];if(pi===0&&mi===0)s.meter=meter;
     }
-    if(e.nodeName==='direction'){const tempo=Number(e.getElementsByTagName('sound')[0]?.getAttribute('tempo'));if(tempo>0){if(pi===0&&mi===0)s.bpm=tempo;else if(pi===0)s.warnings.push('谱中有速度变化；首版使用所选固定练习速度。');}}
+    if(e.nodeName==='direction'){let tempo=Number(e.getElementsByTagName('sound')[0]?.getAttribute('tempo'));const mark=e.getElementsByTagName('metronome')[0];if(!(tempo>0)&&mark){const unit={whole:4,half:2,quarter:1,eighth:.5,'16th':.25}[txt(mark,'beat-unit')],dots=mark.getElementsByTagName('beat-unit-dot').length;tempo=Number(txt(mark,'per-minute'))*unit*(2-1/2**dots);}if(tempo>0){if(pi===0&&mi===0){s.bpm=tempo;s.tempoSource='score';}else if(pi===0)s.warnings.push('谱中有速度变化；首版使用所选固定练习速度。');}}
     if(e.nodeName==='backup')cursor-=Number(txt(e,'duration','0'))/div;
     if(e.nodeName==='forward'){cursor+=Number(txt(e,'duration','0'))/div;max=Math.max(max,cursor);}
     if(e.nodeName==='harmony'&&pi===0){const root=txt(e,'root-step'),alter=Number(txt(e,'root-alter','0')),kind=txt(e,'kind','major');
@@ -81,7 +81,7 @@ export function parseMusicXML(xml,parser=new DOMParser()){
  }
  for(const p of s.parts){p.notes.sort((a,b)=>a.beat-b.beat||b.midi-a.midi);p.notes.forEach((n,i)=>n.id=i);}
  s.parts=s.parts.filter(p=>p.notes.some(n=>n.midi!=null));if(!s.parts.length)throw Error('未找到有音高的旋律声部。');s.notes=s.parts[0].notes;
- if(s.notes.length>6000)throw Error('旋律超过 6000 个音符，请分段导出。');s.bpm=Math.max(30,Math.min(240,s.bpm));s.warnings=[...new Set(s.warnings)];return s;
+ if(s.notes.length>6000)throw Error('旋律超过 6000 个音符，请分段导出。');if(s.tempoSource==='suggested')s.warnings.push('曲谱未标速度：80 为建议练习速度，可自行调整。');if(s.bpm<30||s.bpm>240)s.warnings.push('原谱速度超出首版范围，已限制到每分钟 30—240 个四分音符。');s.bpm=Math.max(30,Math.min(240,s.bpm));s.warnings=[...new Set(s.warnings)];return s;
 }
 export function buildTimeline(score,{start=0,end=score.measures.length-1,bpm=score.bpm,transpose=0}={}){
  const first=score.measures[start],last=score.measures[end];if(!first||!last||end<start)throw Error('请选择有效的小节范围。');
