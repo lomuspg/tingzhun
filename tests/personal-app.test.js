@@ -1,4 +1,5 @@
 import{test}from'node:test';import assert from'node:assert/strict';import fs from'node:fs';import{Window}from'happy-dom';import{IDBFactory}from'fake-indexeddb';import{createD1}from'./helpers/d1.js';import{handleApi}from'../worker/api.js';import{parseJianpu,summarize}from'../dist/lib/core.js';import{records,setRecordOwner,getRecordOwner,createRecordScope}from'../dist/lib/storage.js';
+import{waitFor}from'./helpers/wait-for.js';
 const wait=ms=>new Promise(r=>setTimeout(r,ms)),origin='https://tingzhun-practice.jokeycamel4.chatgpt.site';
 test('登录应用：不混入游客与其他账号，录音后只同步摘要，账号变更后锁定旧界面',async()=>{
  const env=createD1(),win=new Window({url:origin,settings:{disableJavaScriptEvaluation:true,disableCSSFileLoading:true,disableJavaScriptFileLoading:true}}),timers=[],nativeTimeout=globalThis.setTimeout;
@@ -21,7 +22,9 @@ test('登录应用：不混入游客与其他账号，录音后只同步摘要�
   for(let i=0;i<20;i++){if((await records('list'))[0]?.syncState==='synced')break;await wait(20);}
   const local=(await records('list'))[0];assert.ok(local.audio);assert.equal(local.syncState,'synced');const cloud=(await(await call('/api/sessions','alice')).json()).records;assert.equal(cloud.length,1);assert.equal(cloud[0].audio,null);assert.equal(cloud[0].frames.length,0);assert.equal((await(await call('/api/sessions','bob')).json()).records.length,1);assert.ok(!$('historyList').textContent.includes('Bob不可见曲谱'));assert.ok(!$('historyList').textContent.includes('游客旧记录'));
   await records('delete',local.id);await $('refreshCloud').onclick();$('historyList').querySelector('[data-review]').onclick();assert.match($('exportBackup').textContent,/不含录音/);
-  const privateScope=createRecordScope();win.document.querySelector('[data-page="studio"]').onclick();await $('start').onclick();await wait(200);currentUser='bob';window.dispatchEvent(new win.Event('focus'));for(let i=0;i<40&&getRecordOwner()!=='guest';i++)await wait(10);
+  const privateScope=createRecordScope();win.document.querySelector('[data-page="studio"]').onclick();await $('start').onclick();await wait(200);currentUser='bob';window.dispatchEvent(new win.Event('focus'));assert.equal($('identityShield').hidden,false);
+  // 切换存储身份后还要异步读取游客历史；等界面清理结束，避免在中间态销毁测试窗口。
+  await waitFor(()=>getRecordOwner()==='guest'&&$('accountMenu').textContent.includes('游客')&&$('identityShield').hidden,'账号切换完成并清理旧界面');
   assert.match($('accountMenu').textContent,/游客/);assert.equal($('review').hidden,true);assert.ok(!$('historyList').textContent.includes('起音与跳进'));assert.ok(!$('historyList').textContent.includes('Bob不可见曲谱'));assert.equal((await records('list'))[0].score.title,'游客旧记录');assert.equal((await privateScope.list()).length,1);assert.equal(await(await privateScope.list())[0].audio.text(),'private-recording');
  }finally{timers.forEach(clearTimeout);globalThis.setTimeout=nativeTimeout;await win.happyDOM.close();env.sql.close();}
 });
