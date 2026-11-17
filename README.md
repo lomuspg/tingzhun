@@ -2,6 +2,12 @@
 
 免费静态网页练唱工具。音高分析、钢琴合成、录音和练习记录在访问者设备本地处理，无付费接口或音频上传。
 
+在线试用：https://tingzhun-practice.jokeycamel4.chatgpt.site
+
+源码与版本：https://github.com/lomuspg/tingzhun
+
+GitHub Pages（免费静态网页托管）备用入口：https://lomuspg.github.io/tingzhun/
+
 ## 打开
 
 推荐访问已发布的网址。自行运行：在本目录执行 `node server.mjs`，用浏览器打开 http://127.0.0.1:4173 。Node.js（JavaScript 运行环境）仅用于本机静态服务；访问已托管网页无需安装它。不要直接双击 index.html，浏览器模块和麦克风需要安全网页或本机服务。
