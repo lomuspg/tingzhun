@@ -1,0 +1,3 @@
+import{sqliteTable,text,integer,primaryKey,index}from'drizzle-orm/sqlite-core';
+export const accounts=sqliteTable('accounts',{userId:text('user_id').primaryKey(),vaultKey:text('vault_key').notNull(),preferences:text('preferences').notNull().default('{}'),updatedAt:integer('updated_at').notNull()});
+export const cloudSessions=sqliteTable('cloud_sessions',{userId:text('user_id').notNull(),sessionId:text('session_id').notNull(),payload:text('payload').notNull(),bytes:integer('bytes').notNull(),created:text('created').notNull(),updatedAt:integer('updated_at').notNull()},t=>[primaryKey({columns:[t.userId,t.sessionId]}),index('cloud_owner_created').on(t.userId,t.created)]);

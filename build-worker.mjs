@@ -1,0 +1,4 @@
+import{build}from'esbuild';import fs from'node:fs';import path from'node:path';
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.txt':'text/plain; charset=utf-8'},assets={};
+function collect(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){if(entry.name==='server'||entry.name.startsWith('.'))continue;const filename=path.join(dir,entry.name);if(entry.isDirectory())collect(filename);else if(types[path.extname(filename)])assets['/'+path.relative('dist',filename).split(path.sep).join('/')]={body:fs.readFileSync(filename,'utf8'),type:types[path.extname(filename)]};}}
+collect('dist');await build({entryPoints:['worker/index.js'],bundle:true,format:'esm',platform:'browser',target:'es2022',outfile:'dist/server/index.js',define:{__ASSET_TABLE__:JSON.stringify(assets)}});console.log(`Worker built with ${Object.keys(assets).length} static assets.`);
